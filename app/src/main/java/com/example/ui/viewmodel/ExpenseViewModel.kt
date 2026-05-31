@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 class ExpenseViewModel(
@@ -163,7 +165,7 @@ class ExpenseViewModel(
         }
     }
 
-    private suspend fun checkAndProcessRecurringExpenses() {
+    private suspend fun checkAndProcessRecurringExpenses() = withContext(Dispatchers.IO) {
         val calendar = Calendar.getInstance()
         val currentYearMonth = "${calendar.get(Calendar.YEAR)}-${calendar.get(Calendar.MONTH) + 1}"
         val currentDay = calendar.get(Calendar.DAY_OF_MONTH)

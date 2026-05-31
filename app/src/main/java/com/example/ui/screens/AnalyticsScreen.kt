@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -48,6 +49,12 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.animation.core.*
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -61,7 +68,13 @@ fun AnalyticsScreen(
     val selectedCategoryId by viewModel.selectedAnalyticsCategoryId.collectAsState()
 
     val haptic = LocalHapticFeedback.current
-    val currencyFormatter = remember { NumberFormat.getCurrencyInstance(Locale("en", "IN")) }
+    val currencyFormatter = remember {
+        try {
+            NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-IN"))
+        } catch (e: Exception) {
+            NumberFormat.getCurrencyInstance(Locale.US)
+        }
+    }
 
     // Time calculations
     val now = remember(allExpenses) { System.currentTimeMillis() }
@@ -507,9 +520,57 @@ fun InteractiveDonutChart(
     currencyFormatter: NumberFormat,
     onSegmentSelect: (Long?) -> Unit
 ) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    
+    // Animate the sweep sectors on entry or when data changes
+    val transitionProgress = remember { Animatable(0f) }
+    LaunchedEffect(distributions) {
+        transitionProgress.snapTo(0f)
+        transitionProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = 0.85f,
+                stiffness = Spring.StiffnessLow
+            )
+        )
+    }
+
+    // Capture stroke widths reactively per category piece
+    val animatedStrokeWidths = distributions.map { share ->
+        val isSelected = selectedId == share.category.id
+        val targetWidthDp = if (isSelected) 44.dp else 32.dp
+        val targetWidthPx = with(density) { targetWidthDp.toPx() }
+        animateFloatAsState(
+            targetValue = targetWidthPx,
+            animationSpec = spring(
+                dampingRatio = 0.62f,
+                stiffness = Spring.StiffnessMedium
+            ),
+            label = "stroke_width_${share.category.id}"
+        )
+    }
+
     Box(
         modifier = Modifier
             .size(240.dp)
+            .drawBehind {
+                val cw = size.width
+                val ch = size.height
+                val centerOffset = Offset(cw / 2f, ch / 2f)
+                // Subtle radial cosmic glow under the donut chart
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0x1F818CF8),
+                            Color.Transparent
+                        ),
+                        center = centerOffset,
+                        radius = cw / 1.4f
+                    ),
+                    radius = cw / 1.4f,
+                    center = centerOffset
+                )
+            }
             .pointerInput(distributions) {
                 // Approximate angle detection on canvas click
                 detectTapGestures { offset ->
@@ -544,17 +605,20 @@ fun InteractiveDonutChart(
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val strokeWidth = 32.dp.toPx()
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("interactive_donut_chart")
+        ) {
+            val strokeWidth = with(density) { 32.dp.toPx() }
             val canvasWidth = size.width
             val canvasHeight = size.height
-            val radius = (minOf(canvasWidth, canvasHeight) - strokeWidth) / 2f
             val center = Offset(canvasWidth / 2f, canvasHeight / 2f)
 
             var lastAngle = -90f // Start angles at exactly 12 o'clock top orientation
 
-            distributions.forEach { share ->
-                val sweepAngle = share.percent * 360f
+            distributions.forEachIndexed { index, share ->
+                val sweepAngle = share.percent * 360f * transitionProgress.value
                 val colorAccent = try {
                     Color(android.graphics.Color.parseColor(share.category.colorHex))
                 } catch (e: java.lang.Exception) {
@@ -562,8 +626,8 @@ fun InteractiveDonutChart(
                 }
 
                 // If segment selected, draw it with expanded stroke style
-                val isSelected = selectedId == share.category.id
-                val finalStrokeWidth = if (isSelected) strokeWidth + 12.dp.toPx() else strokeWidth
+                val finalStrokeWidth = animatedStrokeWidths.getOrNull(index)?.value ?: strokeWidth
+                val radius = (minOf(canvasWidth, canvasHeight) - finalStrokeWidth) / 2f
 
                 drawArc(
                     color = colorAccent,
@@ -575,11 +639,47 @@ fun InteractiveDonutChart(
                     style = Stroke(width = finalStrokeWidth, cap = StrokeCap.Round)
                 )
 
+                // Only draw text labels when animation has advanced enough and the share isn't tiny
+                if (transitionProgress.value > 0.4f && share.percent >= 0.04f && sweepAngle > 10f) {
+                    val middleAngle = lastAngle + sweepAngle / 2f
+                    val middleAngleRad = Math.toRadians(middleAngle.toDouble())
+                    
+                    // Center percentage in the middle of the segment stroke band
+                    val textRadius = radius
+                    val textX = center.x + textRadius * cos(middleAngleRad).toFloat()
+                    val textY = center.y + textRadius * sin(middleAngleRad).toFloat()
+                    
+                    val percentText = "${(share.percent * 100).roundToInt()}%"
+                    
+                    drawIntoCanvas { canvas ->
+                        val textPaint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.WHITE
+                            textSize = with(density) { 11.sp.toPx() }
+                            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            // Ambient dark shadow underneath text for crisp readability
+                            setShadowLayer(6f, 0f, 2f, android.graphics.Color.argb(220, 0, 0, 0))
+                        }
+                        
+                        // Vertical centering math using FontMetrics
+                        val fontMetrics = textPaint.fontMetrics
+                        val textHeightOffset = (fontMetrics.descent + fontMetrics.ascent) / 2f
+                        
+                        canvas.nativeCanvas.drawText(
+                            percentText,
+                            textX,
+                            textY - textHeightOffset,
+                            textPaint
+                        )
+                    }
+                }
+
                 lastAngle += sweepAngle
             }
 
             // Draw a fallback gray circle if there are no distributions
             if (distributions.isEmpty()) {
+                val radius = (minOf(canvasWidth, canvasHeight) - strokeWidth) / 2f
                 drawArc(
                     color = Color.LightGray.copy(alpha = 0.3f),
                     startAngle = 0f,
@@ -592,54 +692,76 @@ fun InteractiveDonutChart(
             }
         }
 
-        // Draw central dynamic label
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 40.dp)
-        ) {
-            val displayLabel = if (selectedId != null) {
-                distributions.firstOrNull { it.category.id == selectedId }?.category?.name ?: "Total Spend"
-            } else {
-                "Total Spend"
-            }
-
-            val displayAmount = if (selectedId != null) {
-                distributions.firstOrNull { it.category.id == selectedId }?.spentAmount ?: totalSpent
-            } else {
-                totalSpent
-            }
-
-            Text(
-                text = displayLabel,
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = currencyFormatter.format(displayAmount),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    letterSpacing = (-0.5).sp
+        // Concentred translucent card for depth
+        Box(
+            modifier = Modifier
+                .size(145.dp)
+                .clip(CircleShape)
+                .background(Color(0x3B0B0B14))
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0x4D818CF8),
+                            Color(0x1A1E1B4B)
+                        )
+                    ),
+                    shape = CircleShape
                 ),
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            contentAlignment = Alignment.Center
+        ) {
+            // Draw central dynamic label
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
+                val displayLabel = if (selectedId != null) {
+                    distributions.firstOrNull { it.category.id == selectedId }?.category?.name ?: "Total Spend"
+                } else {
+                    "Total Spend"
+                }
 
-            if (selectedId != null) {
+                val displayAmount = if (selectedId != null) {
+                    distributions.firstOrNull { it.category.id == selectedId }?.spentAmount ?: totalSpent
+                } else {
+                    totalSpent
+                }
+
                 Text(
-                    text = "Tap to Reset",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clickable { onSegmentSelect(null) }
-                        .padding(top = 4.dp)
+                    text = displayLabel,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = currencyFormatter.format(displayAmount),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (selectedId != null) {
+                    Text(
+                        text = "Reset Filter",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = Color(0xFF818CF8),
+                        modifier = Modifier
+                            .clickable { onSegmentSelect(null) }
+                            .padding(top = 4.dp)
+                    )
+                }
             }
         }
     }

@@ -11,6 +11,8 @@ import com.example.data.model.RecurringExpense
 import com.example.data.model.RecurringExpenseWithCategory
 import com.example.data.model.UserBudget
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class ExpenseRepository(
     private val categoryDao: CategoryDao,
@@ -73,8 +75,8 @@ class ExpenseRepository(
     fun getExpensesInTimeRange(startTime: Long, endTime: Long): Flow<List<ExpenseWithCategory>> =
         expenseDao.getExpensesInTimeRange(startTime, endTime)
 
-    suspend fun seedDefaultsIfEmpty() {
-        if (categoryDao.getCategoryCount() > 0) return
+    suspend fun seedDefaultsIfEmpty() = withContext(Dispatchers.IO) {
+        if (categoryDao.getCategoryCount() > 0) return@withContext
 
         val defaults = listOf(
             Category(name = "Rent / Flat", iconName = "Home", colorHex = "#3B82F6", monthlyLimit = 9000.0),

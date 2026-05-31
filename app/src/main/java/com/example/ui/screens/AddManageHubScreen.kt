@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.app.DatePickerDialog
 import kotlinx.coroutines.delay
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -61,7 +60,13 @@ fun AddManageHubScreen(
 
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val currencyFormatter = remember { NumberFormat.getCurrencyInstance(Locale("en", "IN")) }
+    val currencyFormatter = remember {
+        try {
+            NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-IN"))
+        } catch (e: Exception) {
+            NumberFormat.getCurrencyInstance(Locale.US)
+        }
+    }
 
     // Forms states
     var activeTab by remember { mutableStateOf("Expenses") } // "Expenses" or "Categories" or "Salar_Bills"
@@ -72,6 +77,7 @@ fun AddManageHubScreen(
     var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
     var selectedPaymentMode by remember { mutableStateOf("Bank") } // "Cash", "Bank", "Credit Card"
     var selectedTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     var showExpenseSavedMessage by remember { mutableStateOf(false) }
 
@@ -204,7 +210,11 @@ fun AddManageHubScreen(
                             Spacer(modifier = Modifier.height(4.dp))
                             OutlinedTextField(
                                 value = expenseAmount,
-                                onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) expenseAmount = it },
+                                onValueChange = { 
+                                    if (it.isEmpty() || it.matches(Regex("^[0-9]*\\.?[0-9]{0,2}$"))) {
+                                        expenseAmount = it
+                                    }
+                                },
                                 leadingIcon = {
                                     Text(
                                         text = "₹",
@@ -371,7 +381,7 @@ fun AddManageHubScreen(
 
                         // Date Pick Section
                         val dateText = remember(selectedTimestamp) {
-                            SimpleDateFormat("dd MMMM, YYYY", Locale.getDefault()).format(Date(selectedTimestamp))
+                            SimpleDateFormat("dd MMMM, yyyy", Locale.getDefault()).format(Date(selectedTimestamp))
                         }
 
                         Row(
@@ -381,20 +391,7 @@ fun AddManageHubScreen(
                                 .background(SleekSurfaceVariant)
                                 .border(1.dp, SleekDivider, RoundedCornerShape(12.dp))
                                 .clickable {
-                                    val cal = Calendar.getInstance()
-                                    cal.timeInMillis = selectedTimestamp
-                                    DatePickerDialog(
-                                        context,
-                                        { _, y, m, d ->
-                                            cal.set(Calendar.YEAR, y)
-                                            cal.set(Calendar.MONTH, m)
-                                            cal.set(Calendar.DAY_OF_MONTH, d)
-                                            selectedTimestamp = cal.timeInMillis
-                                        },
-                                        cal.get(Calendar.YEAR),
-                                        cal.get(Calendar.MONTH),
-                                        cal.get(Calendar.DAY_OF_MONTH)
-                                    ).show()
+                                    showDatePicker = true
                                 }
                                 .padding(16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -418,6 +415,52 @@ fun AddManageHubScreen(
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = PrimaryDark
                             )
+                        }
+
+                        // Native Compose M3 DatePickerDialog
+                        if (showDatePicker) {
+                            val datePickerState = rememberDatePickerState(
+                                initialSelectedDateMillis = selectedTimestamp
+                            )
+                            DatePickerDialog(
+                                onDismissRequest = { showDatePicker = false },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            selectedTimestamp = datePickerState.selectedDateMillis ?: selectedTimestamp
+                                            showDatePicker = false
+                                        }
+                                    ) {
+                                        Text("Confirm", color = IndigoDarkAccent)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(
+                                        onClick = { showDatePicker = false }
+                                    ) {
+                                        Text("Cancel", color = SleekTextSecondary)
+                                    }
+                                },
+                                colors = DatePickerDefaults.colors(
+                                    containerColor = SleekSurface
+                                )
+                            ) {
+                                DatePicker(
+                                    state = datePickerState,
+                                    colors = DatePickerDefaults.colors(
+                                        containerColor = SleekSurface,
+                                        titleContentColor = Color.White,
+                                        headlineContentColor = Color.White,
+                                        weekdayContentColor = SleekTextSecondary,
+                                        subheadContentColor = SleekTextSecondary,
+                                        selectedDayContainerColor = IndigoDarkAccent,
+                                        selectedDayContentColor = Color.White,
+                                        todayContentColor = PrimaryDark,
+                                        todayDateBorderColor = PrimaryDark,
+                                        dayContentColor = Color.White
+                                    )
+                                )
+                            }
                         }
 
                         // Success Indicator Toast Simulation
@@ -535,7 +578,11 @@ fun AddManageHubScreen(
                         // Category Budget Limit
                         OutlinedTextField(
                             value = categoryLimit,
-                            onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) categoryLimit = it },
+                            onValueChange = { 
+                                if (it.isEmpty() || it.matches(Regex("^[0-9]*\\.?[0-9]{0,2}$"))) {
+                                    categoryLimit = it
+                                }
+                            },
                             label = { Text("Monthly Budget Limit (₹)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(12.dp),
@@ -893,7 +940,11 @@ fun AddManageHubScreen(
 
                         OutlinedTextField(
                             value = salaryInput,
-                            onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) salaryInput = it },
+                            onValueChange = { 
+                                if (it.isEmpty() || it.matches(Regex("^[0-9]*\\.?[0-9]{0,2}$"))) {
+                                    salaryInput = it
+                                }
+                            },
                             label = { Text("Your Monthly Salary (₹)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(12.dp),
@@ -988,7 +1039,11 @@ fun AddManageHubScreen(
                         ) {
                             OutlinedTextField(
                                 value = billAmount,
-                                onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) billAmount = it },
+                                onValueChange = { 
+                                    if (it.isEmpty() || it.matches(Regex("^[0-9]*\\.?[0-9]{0,2}$"))) {
+                                        billAmount = it
+                                    }
+                                },
                                 label = { Text("Bill Amount (₹)") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 shape = RoundedCornerShape(12.dp),

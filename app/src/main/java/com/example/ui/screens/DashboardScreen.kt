@@ -57,7 +57,13 @@ fun DashboardScreen(
     val allExpenses by viewModel.allExpenses.collectAsState()
     val budget by viewModel.userBudget.collectAsState()
 
-    val currencyFormatter = remember { NumberFormat.getCurrencyInstance(Locale("en", "IN")) }
+    val currencyFormatter = remember {
+        try {
+            NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-IN"))
+        } catch (e: Exception) {
+            NumberFormat.getCurrencyInstance(Locale.US)
+        }
+    }
 
     // Date formatting for header
     val currentMonthName = remember {
