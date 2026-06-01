@@ -24,5 +24,6 @@ data class RecurringExpense(
     val categoryId: Long,
     val dayOfMonth: Int, // Day of the month to execute (e.g. 1 to 28/31)
     val isAutoDeduct: Boolean = false,
-    val lastProcessedMonth: String = "" // Tracks "YYYY-MM" to prevent duplicate logging
+    val lastProcessedMonth: String = "", // Tracks "YYYY-MM" to prevent duplicate logging
+    val userId: String = ""
 )

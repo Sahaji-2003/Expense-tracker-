@@ -8,15 +8,18 @@ import com.example.data.model.Category
 import com.example.data.model.Expense
 import com.example.data.model.RecurringExpense
 import com.example.data.model.UserBudget
+import com.example.data.model.User
+import com.example.data.local.UserDao
 
 @Database(
     entities = [
         Category::class,
         Expense::class,
         UserBudget::class,
-        RecurringExpense::class
+        RecurringExpense::class,
+        User::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
     abstract fun userBudgetDao(): UserBudgetDao
     abstract fun recurringExpenseDao(): RecurringExpenseDao
+    abstract fun userDao(): UserDao
 
     companion object {
         @Volatile

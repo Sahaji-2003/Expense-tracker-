@@ -5,6 +5,6 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "user_budgets")
 data class UserBudget(
-    @PrimaryKey val id: Int = 1, // Singleton row
-    val monthlySalary: Double = 50000.0
+    @PrimaryKey val userId: String,
+    val monthlySalary: Double = 0.0
 )

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -71,6 +73,9 @@ fun AddManageHubScreen(
     // Forms states
     var activeTab by remember { mutableStateOf("Expenses") } // "Expenses" or "Categories" or "Salar_Bills"
 
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
     // Expense Form States
     var expenseAmount by remember { mutableStateOf("") }
     var expenseDescription by remember { mutableStateOf("") }
@@ -89,6 +94,7 @@ fun AddManageHubScreen(
     var categoryLimit by remember { mutableStateOf("") }
 
     var showCategorySavedMessage by remember { mutableStateOf(false) }
+    var showBillSavedMessage by remember { mutableStateOf(false) }
 
     if (showExpenseSavedMessage) {
         LaunchedEffect(showExpenseSavedMessage) {
@@ -101,6 +107,22 @@ fun AddManageHubScreen(
         LaunchedEffect(showCategorySavedMessage) {
             delay(3000)
             showCategorySavedMessage = false
+        }
+    }
+
+    var showSalarySavedMessage by remember { mutableStateOf(false) }
+
+    if (showBillSavedMessage) {
+        LaunchedEffect(showBillSavedMessage) {
+            delay(3000)
+            showBillSavedMessage = false
+        }
+    }
+
+    if (showSalarySavedMessage) {
+        LaunchedEffect(showSalarySavedMessage) {
+            delay(3000)
+            showSalarySavedMessage = false
         }
     }
 
@@ -119,27 +141,54 @@ fun AddManageHubScreen(
     var billDayOfMonth by remember { mutableStateOf("1") }
     var billAutoDeduct by remember { mutableStateOf(true) }
 
-    // Constants for customizing
+    // Auto-select first category if list is not empty and selection is currently null
+    LaunchedEffect(categories) {
+        if (categories.isNotEmpty()) {
+            if (selectedCategoryId == null) {
+                selectedCategoryId = categories.first().id
+            }
+            if (billCategoryId == null) {
+                billCategoryId = categories.first().id
+            }
+        }
+    }
+
+    // Constants for customizing with 20 premium colors
     val paletteColors = listOf(
         "#3B82F6", // Blue
         "#EF4444", // Red
+        "#10B981", // Green/Emerald
+        "#F59E0B", // Amber
         "#6366F1", // Indigo
+        "#EC4899", // Pink
+        "#8B5CF6", // Purple
+        "#14B8A6", // Teal
         "#F97316", // Orange
-        "#0D9488", // Teal
         "#06B6D4", // Cyan
-        "#A855F7", // Purple
-        "#10B981", // Green
-        "#64748B"  // Slate
+        "#64748B", // Slate/Grey
+        "#84CC16", // Lime
+        "#22C55E", // Light Green
+        "#D946EF", // Fuchsia
+        "#E11D48", // Rose
+        "#F53267", // Ruby
+        "#DFDF11", // Bright Yellow/Olive
+        "#2E8B57", // SeaGreen
+        "#FF6347", // Tomato
+        "#4682B4"  // SteelBlue
     )
 
+    // 30 highly meaningful finance/spending category icons
     val supportedIcons = listOf(
-        "Home", "Star", "Favorite", "Check", "ShoppingCart", "PlayArrow", "Info", "Edit", "Add"
+        "Home", "ShoppingCart", "Favorite", "Star", "Settings", "Info", "PlayArrow", "Warning", "Delete", "Add",
+        "Check", "Edit", "Refresh", "Person", "Notifications", "Email", "Search", "Share", "ThumbUp", "Close",
+        "Done", "LocationOn", "Lock", "Build", "Call", "Face", "List", "ExitToApp", "AccountCircle", "AccountBox"
     )
 
     LazyColumn(
+        state = listState,
         modifier = modifier
             .fillMaxSize()
-            .background(SleekBg)
+            .background(Color.Transparent)
             .testTag("add_manage_hub_screen"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -223,14 +272,14 @@ fun AddManageHubScreen(
                                     )
                                 },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, color = Color.White),
+                                textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, color = SleekTextPrimary),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("expense_amount_input"),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
+                                    focusedTextColor = SleekTextPrimary,
+                                    unfocusedTextColor = SleekTextPrimary,
                                     focusedContainerColor = SleekSurfaceVariant,
                                     unfocusedContainerColor = SleekSurfaceVariant,
                                     focusedBorderColor = IndigoDarkAccent,
@@ -258,8 +307,8 @@ fun AddManageHubScreen(
                                 .fillMaxWidth()
                                 .testTag("expense_description_input"),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
+                                focusedTextColor = SleekTextPrimary,
+                                unfocusedTextColor = SleekTextPrimary,
                                 focusedContainerColor = SleekSurfaceVariant,
                                 unfocusedContainerColor = SleekSurfaceVariant,
                                 focusedBorderColor = IndigoDarkAccent,
@@ -300,7 +349,7 @@ fun AddManageHubScreen(
                                         FilterChip(
                                             selected = isSelected,
                                             onClick = {
-                                                selectedCategoryId = if (isSelected) null else cat.id
+                                                selectedCategoryId = cat.id
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             },
                                             label = { Text(cat.name) },
@@ -501,7 +550,7 @@ fun AddManageHubScreen(
                                     // Reset Fields
                                     expenseAmount = ""
                                     expenseDescription = ""
-                                    selectedCategoryId = null
+                                    selectedCategoryId = categories.firstOrNull()?.id
                                     showExpenseSavedMessage = true
                                 }
                             },
@@ -512,16 +561,20 @@ fun AddManageHubScreen(
                             shape = RoundedCornerShape(12.dp),
                             enabled = expenseAmount.isNotEmpty() && selectedCategoryId != null,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = IndigoDarkAccent,
+                                containerColor = if (showExpenseSavedMessage) Color(0xFF10B981) else IndigoDarkAccent,
                                 contentColor = Color.White,
                                 disabledContainerColor = SleekSurfaceVariant,
                                 disabledContentColor = SleekMutedText
                             )
                         ) {
-                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null)
+                            Icon(
+                                imageVector = if (showExpenseSavedMessage) Icons.Default.CheckCircle else Icons.Default.CheckCircle, 
+                                contentDescription = null,
+                                tint = Color.White
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Save Expense Log",
+                                text = if (showExpenseSavedMessage) "Log Saved ✓" else "Save Expense Log",
                                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
                             )
                         }
@@ -548,7 +601,7 @@ fun AddManageHubScreen(
                         Text(
                             text = if (editingCategory != null) "Edit Custom Category" else "Create Custom Category",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White
+                            color = SleekTextPrimary
                         )
 
                         // Category Name
@@ -561,8 +614,8 @@ fun AddManageHubScreen(
                                 .fillMaxWidth()
                                 .testTag("category_name_input"),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
+                                focusedTextColor = SleekTextPrimary,
+                                unfocusedTextColor = SleekTextPrimary,
                                 focusedContainerColor = SleekSurfaceVariant,
                                 unfocusedContainerColor = SleekSurfaceVariant,
                                 focusedBorderColor = IndigoDarkAccent,
@@ -590,8 +643,8 @@ fun AddManageHubScreen(
                                 .fillMaxWidth()
                                 .testTag("category_limit_input"),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
+                                focusedTextColor = SleekTextPrimary,
+                                unfocusedTextColor = SleekTextPrimary,
                                 focusedContainerColor = SleekSurfaceVariant,
                                 unfocusedContainerColor = SleekSurfaceVariant,
                                 focusedBorderColor = IndigoDarkAccent,
@@ -604,29 +657,44 @@ fun AddManageHubScreen(
                             placeholder = { Text("3000") }
                         )
 
-                        // Grid selector for icons
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "Pick Category Emblem Icon",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = SleekTextSecondary
-                            )
-                            FlowRow(
+                        // Pure swipeable selector for icons
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                maxItemsInEachRow = 5
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                supportedIcons.forEach { iconKey ->
+                                Text(
+                                    text = "Pick Category Emblem Icon",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Swipe horizontally to see all options",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SleekTextSecondary
+                                )
+                            }
+
+                            // Clean horizontal scrolling container
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(SleekSurfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                    .padding(12.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                items(supportedIcons) { iconKey ->
                                     val isSelected = selectedIconName == iconKey
                                     Box(
                                         modifier = Modifier
-                                            .size(44.dp)
+                                            .size(50.dp)
                                             .clip(CircleShape)
                                             .background(
-                                                if (isSelected) IndigoDarkAccent else SleekSurfaceVariant
+                                                if (isSelected) IndigoDarkAccent else SleekSurface.copy(alpha = 0.8f)
                                             )
                                             .border(
-                                                width = 1.dp,
+                                                width = if (isSelected) 2.dp else 1.dp,
                                                 color = if (isSelected) PrimaryDark else SleekDivider,
                                                 shape = CircleShape
                                             )
@@ -639,31 +707,47 @@ fun AddManageHubScreen(
                                         Icon(
                                             imageVector = IconMapping.getIcon(iconKey),
                                             contentDescription = iconKey,
-                                            tint = if (isSelected) Color.White else SleekTextSecondary
+                                            tint = if (isSelected) Color.White else SleekTextSecondary,
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
                                 }
                             }
                         }
 
-                        // Colors palette picker
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "Choose Visual Theme Color",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = SleekTextSecondary
-                            )
-                            FlowRow(
+                        // Pure swipeable selector for colors
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                maxItemsInEachRow = 5
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                paletteColors.forEach { colorString ->
+                                Text(
+                                    text = "Choose Visual Theme Color",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Swipe horizontally to see all options",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SleekTextSecondary
+                                )
+                            }
+
+                            // Clean horizontal scrolling container for colors
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(SleekSurfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                    .padding(12.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                items(paletteColors) { colorString ->
                                     val isSelected = selectedColorHex.lowercase() == colorString.lowercase()
                                     val composeColor = remember { Color(android.graphics.Color.parseColor(colorString)) }
                                     Box(
                                         modifier = Modifier
-                                            .size(44.dp)
+                                            .size(50.dp)
                                             .clip(CircleShape)
                                             .background(composeColor)
                                             .border(
@@ -680,9 +764,9 @@ fun AddManageHubScreen(
                                         if (isSelected) {
                                             Icon(
                                                 imageVector = Icons.Default.Check,
-                                                contentDescription = "Selected",
+                                                contentDescription = "Selected checking icon",
                                                 tint = Color.White,
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
                                     }
@@ -749,16 +833,20 @@ fun AddManageHubScreen(
                             shape = RoundedCornerShape(12.dp),
                             enabled = categoryName.isNotBlank(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = IndigoDarkAccent,
+                                containerColor = if (showCategorySavedMessage) Color(0xFF10B981) else IndigoDarkAccent,
                                 contentColor = Color.White,
                                 disabledContainerColor = SleekSurfaceVariant,
                                 disabledContentColor = SleekMutedText
                             )
                         ) {
-                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null)
+                            Icon(
+                                imageVector = if (showCategorySavedMessage) Icons.Default.CheckCircle else Icons.Default.CheckCircle, 
+                                contentDescription = null,
+                                tint = Color.White
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (editingCategory != null) "Save Customizations" else "Create Category Theme",
+                                text = if (showCategorySavedMessage) "Category Saved ✓" else (if (editingCategory != null) "Save Customizations" else "Create Category Theme"),
                                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
                             )
                         }
@@ -865,6 +953,9 @@ fun AddManageHubScreen(
                             selectedIconName = category.iconName
                             selectedColorHex = category.colorHex
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(1)
+                            }
                         },
                     colors = CardDefaults.cardColors(containerColor = SleekSurfaceVariant),
                     shape = RoundedCornerShape(12.dp)
@@ -876,7 +967,10 @@ fun AddManageHubScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             // Left vertical colored action pill
                             Box(
                                 modifier = Modifier
@@ -900,16 +994,43 @@ fun AddManageHubScreen(
                             }
                         }
 
-                        IconButton(
-                            onClick = { showDeleteConfirmation = true },
-                            modifier = Modifier.size(36.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Delete category",
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                                modifier = Modifier.size(20.dp)
-                            )
+                            IconButton(
+                                onClick = {
+                                    editingCategory = category
+                                    categoryName = category.name
+                                    categoryLimit = category.monthlyLimit.toString()
+                                    selectedIconName = category.iconName
+                                    selectedColorHex = category.colorHex
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(1)
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit category",
+                                    tint = PrimaryDark,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { showDeleteConfirmation = true },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete category",
+                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -935,7 +1056,7 @@ fun AddManageHubScreen(
                         Text(
                             text = "Monthly Salary Limit Configuration",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White
+                            color = SleekTextPrimary
                         )
 
                         OutlinedTextField(
@@ -952,8 +1073,8 @@ fun AddManageHubScreen(
                                 .fillMaxWidth()
                                 .testTag("salary_input"),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
+                                focusedTextColor = SleekTextPrimary,
+                                unfocusedTextColor = SleekTextPrimary,
                                 focusedContainerColor = SleekSurfaceVariant,
                                 unfocusedContainerColor = SleekSurfaceVariant,
                                 focusedBorderColor = IndigoDarkAccent,
@@ -972,21 +1093,29 @@ fun AddManageHubScreen(
                                 if (value != null) {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     viewModel.updateSalary(value)
+                                    showSalarySavedMessage = true
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                             shape = RoundedCornerShape(12.dp),
                             enabled = salaryInput.isNotEmpty(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = IndigoDarkAccent,
+                                containerColor = if (showSalarySavedMessage) Color(0xFF10B981) else IndigoDarkAccent,
                                 contentColor = Color.White,
                                 disabledContainerColor = SleekSurfaceVariant,
                                 disabledContentColor = SleekMutedText
                             )
                         ) {
-                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null)
+                            Icon(
+                                imageVector = if (showSalarySavedMessage) Icons.Default.CheckCircle else Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color.White
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Update Monthly Salary Limit")
+                            Text(
+                                text = if (showSalarySavedMessage) "Updated ✓" else "Update",
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                            )
                         }
                     }
                 }
@@ -1009,7 +1138,7 @@ fun AddManageHubScreen(
                         Text(
                             text = "Schedule Recurring Bill / Subscription",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White
+                            color = SleekTextPrimary
                         )
 
                         OutlinedTextField(
@@ -1019,8 +1148,8 @@ fun AddManageHubScreen(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
+                                focusedTextColor = SleekTextPrimary,
+                                unfocusedTextColor = SleekTextPrimary,
                                 focusedContainerColor = SleekSurfaceVariant,
                                 unfocusedContainerColor = SleekSurfaceVariant,
                                 focusedBorderColor = IndigoDarkAccent,
@@ -1049,8 +1178,8 @@ fun AddManageHubScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
+                                    focusedTextColor = SleekTextPrimary,
+                                    unfocusedTextColor = SleekTextPrimary,
                                     focusedContainerColor = SleekSurfaceVariant,
                                     unfocusedContainerColor = SleekSurfaceVariant,
                                     focusedBorderColor = IndigoDarkAccent,
@@ -1076,8 +1205,8 @@ fun AddManageHubScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
+                                    focusedTextColor = SleekTextPrimary,
+                                    unfocusedTextColor = SleekTextPrimary,
                                     focusedContainerColor = SleekSurfaceVariant,
                                     unfocusedContainerColor = SleekSurfaceVariant,
                                     focusedBorderColor = IndigoDarkAccent,
@@ -1110,7 +1239,7 @@ fun AddManageHubScreen(
                                     FilterChip(
                                         selected = isSelected,
                                         onClick = {
-                                            billCategoryId = if (isSelected) null else cat.id
+                                            billCategoryId = cat.id
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         },
                                         label = { Text(cat.name) },
@@ -1185,23 +1314,31 @@ fun AddManageHubScreen(
                                     // Reset Fields
                                     billName = ""
                                     billAmount = ""
-                                    billCategoryId = null
+                                    billCategoryId = categories.firstOrNull()?.id
                                     billDayOfMonth = "1"
+                                    showBillSavedMessage = true
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                             shape = RoundedCornerShape(12.dp),
                             enabled = billName.isNotBlank() && billAmount.isNotEmpty() && billCategoryId != null,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = IndigoDarkAccent,
+                                containerColor = if (showBillSavedMessage) Color(0xFF10B981) else IndigoDarkAccent,
                                 contentColor = Color.White,
                                 disabledContainerColor = SleekSurfaceVariant,
                                 disabledContentColor = SleekMutedText
                             )
                         ) {
-                            Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                            Icon(
+                                imageVector = if (showBillSavedMessage) Icons.Default.CheckCircle else Icons.Default.Add, 
+                                contentDescription = null,
+                                tint = Color.White
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Schedule Subscriber Bill")
+                            Text(
+                                text = if (showBillSavedMessage) "Subscriber Bill Scheduled ✓" else "Schedule Subscriber Bill",
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

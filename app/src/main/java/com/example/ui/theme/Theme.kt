@@ -14,30 +14,32 @@ import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme =
   darkColorScheme(
-    primary = PrimaryDark,
-    secondary = SecondaryDark,
-    tertiary = TertiaryDark,
-    background = BackgroundDark,
-    surface = SurfaceDark,
-    onBackground = OnBackgroundDark,
-    onSurface = OnSurfaceDark,
-    onPrimary = OnPrimaryDark,
-    onSecondary = OnSecondaryDark,
-    surfaceVariant = SleekSurfaceVariant,
-    onSurfaceVariant = SleekTextSecondary
+    primary = Color(0xFF818CF8),
+    secondary = Color(0xFF94A3B8),
+    tertiary = Color(0xFF10B981),
+    background = Color(0xFF0A0A0A),
+    surface = Color(0xFF1E1E1E),
+    onBackground = Color(0xFFFFFFFF),
+    onSurface = Color(0xFFFFFFFF),
+    onPrimary = Color(0xFF0A0A0A),
+    onSecondary = Color(0xFF0A0A0A),
+    surfaceVariant = Color(0xFF121212),
+    onSurfaceVariant = Color(0xFF94A3B8)
   )
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = Color(0xFF0284C7), // Slate light brand
+    primary = Color(0xFF4F46E5), // Indigo light brand
     secondary = Color(0xFF475569),
-    tertiary = Color(0xFFDB2777),
+    tertiary = Color(0xFF10B981),
     background = Color(0xFFF1F5F9),
     surface = Color(0xFFFFFFFF),
     onBackground = Color(0xFF0F172A),
     onSurface = Color(0xFF0F172A),
     onPrimary = Color.White,
-    onSecondary = Color.White
+    onSecondary = Color.White,
+    surfaceVariant = Color(0xFFE2E8F0),
+    onSurfaceVariant = Color(0xFF475569)
   )
 
 @Composable

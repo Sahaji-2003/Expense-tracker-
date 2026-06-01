@@ -9,5 +9,6 @@ data class Category(
     val name: String,
     val iconName: String, // Mapping string for icons
     val colorHex: String, // Color representation in hex, e.g. "#4CAF50"
-    val monthlyLimit: Double
+    val monthlyLimit: Double,
+    val userId: String = ""
 )

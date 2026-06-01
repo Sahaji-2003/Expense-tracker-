@@ -8,6 +8,7 @@ data class RecurringExpenseWithCategory(
     val dayOfMonth: Int,
     val isAutoDeduct: Boolean,
     val lastProcessedMonth: String,
+    val userId: String,
     val categoryName: String,
     val categoryIconName: String,
     val categoryColorHex: String

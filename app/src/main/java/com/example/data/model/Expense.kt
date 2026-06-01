@@ -23,5 +23,6 @@ data class Expense(
     val description: String,
     val timestamp: Long,
     val categoryId: Long,
-    val paymentMode: String // Cash, Bank, Credit Card
+    val paymentMode: String, // Cash, Bank, Credit Card
+    val userId: String = ""
 )

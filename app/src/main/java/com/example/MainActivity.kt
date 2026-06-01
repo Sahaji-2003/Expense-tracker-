@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.MainContainerScreen
@@ -18,10 +20,11 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     setContent {
-      MyApplicationTheme {
-        val expenseViewModel: ExpenseViewModel = viewModel(
-          factory = ExpenseViewModel.Factory(application)
-        )
+      val expenseViewModel: ExpenseViewModel = viewModel(
+        factory = ExpenseViewModel.Factory(application)
+      )
+      val isDarkTheme by expenseViewModel.isDarkTheme.collectAsState()
+      MyApplicationTheme(darkTheme = isDarkTheme) {
         MainContainerScreen(viewModel = expenseViewModel)
       }
     }

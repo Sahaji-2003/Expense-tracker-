@@ -1,18 +1,22 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,7 +28,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -35,15 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.Category
 import com.example.data.model.ExpenseWithCategory
 import com.example.ui.components.IconMapping
-import com.example.ui.theme.SleekBg
-import com.example.ui.theme.SleekSurface
-import com.example.ui.theme.SleekSurfaceVariant
-import com.example.ui.theme.SleekMutedText
-import com.example.ui.theme.SleekTextPrimary
-import com.example.ui.theme.SleekTextSecondary
-import com.example.ui.theme.SleekDivider
-import com.example.ui.theme.IndigoDarkAccent
-import com.example.ui.theme.PrimaryDark
+import com.example.ui.theme.*
 import com.example.ui.viewmodel.ExpenseViewModel
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -51,9 +50,6 @@ import java.util.*
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.animation.core.*
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -76,11 +72,14 @@ fun AnalyticsScreen(
         }
     }
 
-    // Time calculations
     val now = remember(allExpenses) { System.currentTimeMillis() }
-    
-    val startEpoch = remember(timeFrame, now) {
+
+    // Multi-month timeframe boundaries logic
+    val timeframeBoundaries = remember(timeFrame, now) {
         val calendar = Calendar.getInstance()
+        var startTime = 0L
+        var endTime = Long.MAX_VALUE
+        
         when (timeFrame) {
             "This Week" -> {
                 calendar.set(Calendar.DAY_OF_WEEK, calendar.firstDayOfWeek)
@@ -88,51 +87,100 @@ fun AnalyticsScreen(
                 calendar.set(Calendar.MINUTE, 0)
                 calendar.set(Calendar.SECOND, 0)
                 calendar.set(Calendar.MILLISECOND, 0)
-                calendar.timeInMillis
+                startTime = calendar.timeInMillis
             }
-            "This Month" -> {
+            "This Month", "Current Month" -> {
                 calendar.set(Calendar.DAY_OF_MONTH, 1)
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
                 calendar.set(Calendar.MINUTE, 0)
                 calendar.set(Calendar.SECOND, 0)
                 calendar.set(Calendar.MILLISECOND, 0)
-                calendar.timeInMillis
+                startTime = calendar.timeInMillis
             }
-            else -> 0L // All time
+            "Last Month" -> {
+                calendar.add(Calendar.MONTH, -1)
+                calendar.set(Calendar.DAY_OF_MONTH, 1)
+                calendar.set(Calendar.HOUR_OF_DAY, 0)
+                calendar.set(Calendar.MINUTE, 0)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                startTime = calendar.timeInMillis
+                
+                calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+                calendar.set(Calendar.HOUR_OF_DAY, 23)
+                calendar.set(Calendar.MINUTE, 59)
+                calendar.set(Calendar.SECOND, 59)
+                calendar.set(Calendar.MILLISECOND, 999)
+                endTime = calendar.timeInMillis
+            }
+            "2 Months Ago" -> {
+                calendar.add(Calendar.MONTH, -2)
+                calendar.set(Calendar.DAY_OF_MONTH, 1)
+                calendar.set(Calendar.HOUR_OF_DAY, 0)
+                calendar.set(Calendar.MINUTE, 0)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                startTime = calendar.timeInMillis
+                
+                calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+                calendar.set(Calendar.HOUR_OF_DAY, 23)
+                calendar.set(Calendar.MINUTE, 59)
+                calendar.set(Calendar.SECOND, 59)
+                calendar.set(Calendar.MILLISECOND, 999)
+                endTime = calendar.timeInMillis
+            }
+            "3 Months Ago" -> {
+                calendar.add(Calendar.MONTH, -3)
+                calendar.set(Calendar.DAY_OF_MONTH, 1)
+                calendar.set(Calendar.HOUR_OF_DAY, 0)
+                calendar.set(Calendar.MINUTE, 0)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                startTime = calendar.timeInMillis
+                
+                calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+                calendar.set(Calendar.HOUR_OF_DAY, 23)
+                calendar.set(Calendar.MINUTE, 59)
+                calendar.set(Calendar.SECOND, 59)
+                calendar.set(Calendar.MILLISECOND, 999)
+                endTime = calendar.timeInMillis
+            }
+            else -> {
+                startTime = 0L
+                endTime = Long.MAX_VALUE
+            }
         }
+        Pair(startTime, endTime)
     }
 
-    // Filtered transaction logs
-    val filteredExpenses = remember(allExpenses, startEpoch) {
-        if (startEpoch == 0L) {
-            allExpenses
-        } else {
-            allExpenses.filter { it.timestamp >= startEpoch }
-        }
+    val startEpoch = timeframeBoundaries.first
+    val endEpoch = timeframeBoundaries.second
+
+    // Query historical filter sets
+    val filteredExpenses = remember(allExpenses, startEpoch, endEpoch) {
+        allExpenses.filter { it.timestamp >= startEpoch && it.timestamp <= endEpoch }
     }
 
     val totalSpent = remember(filteredExpenses) {
         filteredExpenses.sumOf { it.amount }
     }
 
-    // Spend distribution by category
+    // Pie slice calculations
     val categoryDistribution = remember(filteredExpenses, categories) {
         categories.map { category ->
             val spent = filteredExpenses.filter { it.categoryId == category.id }.sumOf { it.amount }
             CategorySpendShare(
                 category = category,
                 spentAmount = spent,
-                percent = if (totalSpent > 0) (spent / totalSpent).toFloat() else 0f
+                percent = if (totalSpent > 0f) (spent / totalSpent).toFloat() else 0f
             )
         }.filter { it.spentAmount > 0 }.sortedByDescending { it.spentAmount }
     }
 
-    // Retrieve active selection
     val activeSelection = remember(selectedCategoryId, categoryDistribution) {
         categoryDistribution.firstOrNull { it.category.id == selectedCategoryId }
     }
 
-    // Details filtering
     val detailsExpenses = remember(filteredExpenses, selectedCategoryId) {
         if (selectedCategoryId == null) {
             filteredExpenses
@@ -141,36 +189,93 @@ fun AnalyticsScreen(
         }
     }
 
+    // Compute previous last 3 months boundaries (Month -1, -2, -3) 
+    val monthCompareStats = remember(allExpenses, categories) {
+        val statsList = mutableListOf<CategoryComparisonStat>()
+        val calendar = Calendar.getInstance()
+
+        // Month 0 (Current Month) starting threshold
+        calendar.set(Calendar.DAY_OF_MONTH, 1)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        val m0Start = calendar.timeInMillis
+
+        // Month -1 threshold
+        calendar.add(Calendar.MONTH, -1)
+        val m1Start = calendar.timeInMillis
+        calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+        val m1End = calendar.timeInMillis
+
+        // Month -2 threshold
+        calendar.add(Calendar.MONTH, -1)
+        val m2Start = calendar.timeInMillis
+        calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+        val m2End = calendar.timeInMillis
+
+        // Month -3 threshold
+        calendar.add(Calendar.MONTH, -1)
+        val m3Start = calendar.timeInMillis
+        calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+        val m3End = calendar.timeInMillis
+
+        for (cat in categories) {
+            val spentThisMonth = allExpenses.filter { it.categoryId == cat.id && it.timestamp >= m0Start }.sumOf { it.amount }
+            
+            val spentM1 = allExpenses.filter { it.categoryId == cat.id && it.timestamp >= m1Start && it.timestamp <= m1End }.sumOf { it.amount }
+            val spentM2 = allExpenses.filter { it.categoryId == cat.id && it.timestamp >= m2Start && it.timestamp <= m2End }.sumOf { it.amount }
+            val spentM3 = allExpenses.filter { it.categoryId == cat.id && it.timestamp >= m3Start && it.timestamp <= m3End }.sumOf { it.amount }
+
+            // Average of previous 3 months
+            val threeMonthsSpentSum = spentM1 + spentM2 + spentM3
+            val averagePast3Months = threeMonthsSpentSum / 3.0
+
+            statsList.add(
+                CategoryComparisonStat(
+                    category = cat,
+                    spentCurrentMonth = spentThisMonth,
+                    averagePast3Months = averagePast3Months,
+                    trendPercentage = if (averagePast3Months > 0) {
+                        ((spentThisMonth - averagePast3Months) / averagePast3Months * 100).toInt()
+                    } else 0
+                )
+            )
+        }
+        statsList
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(SleekBg)
+            .background(Color.Transparent)
             .testTag("analytics_screen"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Toggle timeframe (Sleek design)
+        // Toggle timeframe row (with horizontally scrollable support to fit past months gracefully)
         item {
+            val scrollState = rememberScrollState()
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(SleekSurfaceVariant)
-                    .border(1.dp, SleekDivider, RoundedCornerShape(12.dp))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .border(1.dp, SleekDivider, RoundedCornerShape(14.dp))
+                    .horizontalScroll(scrollState)
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf("This Week", "This Month", "All Time").forEach { opt ->
-                    val isSelected = timeFrame == opt
+                listOf("This Week", "This Month", "Last Month", "2 Months Ago", "3 Months Ago").forEach { opt ->
+                    val isSelected = timeFrame == opt || (opt == "This Month" && timeFrame == "Current Month")
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(if (isSelected) IndigoDarkAccent else Color.Transparent)
                             .clickable {
-                                viewModel.setTimeFrame(opt)
+                                viewModel.setTimeFrame(if (opt == "This Month") "Current Month" else opt)
                             }
-                            .padding(vertical = 10.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -202,19 +307,20 @@ fun AnalyticsScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,
-                            contentDescription = null,
+                            contentDescription = "Empty icon warning",
                             modifier = Modifier.size(48.dp),
                             tint = PrimaryDark.copy(alpha = 0.5f)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "No logs in $timeFrame timeframe",
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = Color.White),
+                            text = "No logs in selected timeframe",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = SleekTextPrimary),
                             textAlign = TextAlign.Center
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Add some test categories or log entries in the Add Tab to analyze details.",
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = "Expenses logged during this calendar month will be plotted here. Reset is automated on month-boundary.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = SleekTextSecondary,
                             textAlign = TextAlign.Center
                         )
@@ -236,9 +342,9 @@ fun AnalyticsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Expense Proportions Breakdown",
+                            text = if (timeFrame == "Current Month" || timeFrame == "This Month") "Current Spending Proportions" else "$timeFrame Proportions",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White,
+                            color = SleekTextPrimary,
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -288,7 +394,7 @@ fun AnalyticsScreen(
                 }
             }
 
-            // Category list summary
+            // Category list summary shares
             item {
                 Text(
                     text = "CATEGORY DISTRIBUTION SHARES",
@@ -337,12 +443,12 @@ fun AnalyticsScreen(
                                     .size(10.dp)
                                     .clip(CircleShape)
                                     .background(colorAccent)
-                            )
+                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = item.category.name,
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
+                                color = SleekTextPrimary
                             )
                         }
 
@@ -351,7 +457,7 @@ fun AnalyticsScreen(
                                 Text(
                                     text = currencyFormatter.format(item.spentAmount),
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White
+                                    color = SleekTextPrimary
                                 )
                                 Text(
                                     text = "${(item.percent * 100).toInt()}% of total",
@@ -365,7 +471,7 @@ fun AnalyticsScreen(
             }
 
             // Delta analysis report (Only when time selection features "This Month")
-            if (timeFrame == "This Month") {
+            if (timeFrame == "Current Month" || timeFrame == "This Month") {
                 item {
                     Text(
                         text = "MONTHLY DELTA BUDGET ANALYSIS",
@@ -405,7 +511,7 @@ fun AnalyticsScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Info,
-                                    contentDescription = null,
+                                    contentDescription = "info badge status",
                                     tint = if (isUnderBudget) Color(0xFF10B981) else Color(0xFFEF4444)
                                 )
                             }
@@ -414,7 +520,7 @@ fun AnalyticsScreen(
                                 Text(
                                     text = if (isUnderBudget) "Trending Under Limits" else "Budget Overdraft Alert",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White
+                                    color = SleekTextPrimary
                                 )
                                 Text(
                                     text = if (isUnderBudget) {
@@ -431,10 +537,120 @@ fun AnalyticsScreen(
                 }
             }
 
-            // Historical Segment Logs list (re-filtered contextual category logs)
+            // 3-Month Comparative Trend Analysis Screen Category Table
             item {
                 Text(
-                    text = if (selectedCategoryId == null) "HISTORICAL LOGS" else "LOGS FOR SELECTED SEGMENT",
+                    text = "3-MONTH COMPARATIVE TREND SENSITIVITY",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    ),
+                    color = SleekMutedText,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, SleekDivider, RoundedCornerShape(18.dp)),
+                    colors = CardDefaults.cardColors(containerColor = SleekSurface),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Spent This Month vs 3-Month Hist. Average",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = SleekTextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        monthCompareStats.forEach { stat ->
+                            val colorAccent = try { Color(android.graphics.Color.parseColor(stat.category.colorHex)) } catch (e: Exception) { Color(0xFF818CF8) }
+                            val isHigher = stat.spentCurrentMonth > stat.averagePast3Months
+                            val isUnchanged = stat.spentCurrentMonth == stat.averagePast3Months
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1.3f)) {
+                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(colorAccent))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stat.category.name,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = SleekTextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = currencyFormatter.format(stat.spentCurrentMonth),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        color = SleekTextPrimary
+                                    )
+                                    Text(
+                                        text = "Avg: ${currencyFormatter.format(stat.averagePast3Months)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = SleekMutedText,
+                                        fontSize = 10.sp
+                                    )
+                                }
+
+                                // Trend indicator badging
+                                Box(
+                                    modifier = Modifier
+                                        .weight(0.9f)
+                                        .padding(start = 12.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    val badgeColor = when {
+                                        isUnchanged -> Color.Gray.copy(alpha = 0.15f)
+                                        isHigher -> Color(0xFFEF4444).copy(alpha = 0.15f)
+                                        else -> Color(0xFF10B981).copy(alpha = 0.15f)
+                                    }
+                                    val textColor = when {
+                                        isUnchanged -> Color.Gray
+                                        isHigher -> Color(0xFFF87171)
+                                        else -> Color(0xFF34D399)
+                                    }
+                                    val textValue = when {
+                                        isUnchanged -> "0%"
+                                        isHigher -> "+${stat.trendPercentage}%"
+                                        else -> "-${stat.trendPercentage.coerceAtLeast(-100)}%"
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(badgeColor)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = textValue,
+                                            color = textColor,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Historical segment logs list 
+            item {
+                Text(
+                    text = if (selectedCategoryId == null) "TIME FRAME LOGS" else "LOGS FOR SELECTED CATEGORY",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
@@ -469,7 +685,6 @@ fun AnalyticsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            // Sleek left indicator bar matching recent logs theme in design html
                             Box(
                                 modifier = Modifier
                                     .width(4.dp)
@@ -482,7 +697,7 @@ fun AnalyticsScreen(
                                 Text(
                                     text = if (log.description.isNotBlank()) log.description else log.categoryName,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White,
+                                    color = SleekTextPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -505,6 +720,14 @@ fun AnalyticsScreen(
         }
     }
 }
+
+// Comparison Helper data class
+private data class CategoryComparisonStat(
+    val category: Category,
+    val spentCurrentMonth: Double,
+    val averagePast3Months: Double,
+    val trendPercentage: Int
+)
 
 data class CategorySpendShare(
     val category: Category,
@@ -535,19 +758,21 @@ fun InteractiveDonutChart(
         )
     }
 
-    // Capture stroke widths reactively per category piece
+    // Capture stroke widths reactively per category piece with stabilized composition keys
     val animatedStrokeWidths = distributions.map { share ->
-        val isSelected = selectedId == share.category.id
-        val targetWidthDp = if (isSelected) 44.dp else 32.dp
-        val targetWidthPx = with(density) { targetWidthDp.toPx() }
-        animateFloatAsState(
-            targetValue = targetWidthPx,
-            animationSpec = spring(
-                dampingRatio = 0.62f,
-                stiffness = Spring.StiffnessMedium
-            ),
-            label = "stroke_width_${share.category.id}"
-        )
+        key(share.category.id) {
+            val isSelected = selectedId == share.category.id
+            val targetWidthDp = if (isSelected) 44.dp else 32.dp
+            val targetWidthPx = with(density) { targetWidthDp.toPx() }
+            animateFloatAsState(
+                targetValue = targetWidthPx,
+                animationSpec = spring(
+                    dampingRatio = 0.62f,
+                    stiffness = Spring.StiffnessMedium
+                ),
+                label = "stroke_width_${share.category.id}"
+            )
+        }
     }
 
     Box(
@@ -692,7 +917,7 @@ fun InteractiveDonutChart(
             }
         }
 
-        // Concentred translucent card for depth
+        // Concentric translucent card for depth
         Box(
             modifier = Modifier
                 .size(145.dp)
@@ -743,7 +968,7 @@ fun InteractiveDonutChart(
                         fontSize = 18.sp,
                         letterSpacing = (-0.5).sp
                     ),
-                    color = Color.White,
+                    color = SleekTextPrimary,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

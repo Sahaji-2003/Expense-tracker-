@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -50,12 +51,26 @@ import java.util.*
 @Composable
 fun DashboardScreen(
     viewModel: ExpenseViewModel,
+    onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val categories by viewModel.categories.collectAsState()
     val recentExpenses by viewModel.recentExpenses.collectAsState()
     val allExpenses by viewModel.allExpenses.collectAsState()
     val budget by viewModel.userBudget.collectAsState()
+    val loggedInUser by viewModel.loggedInUser.collectAsState()
+
+    var selectedCategoryForHistory by remember { mutableStateOf<com.example.data.model.Category?>(null) }
+    var showSignOutAlert by remember { mutableStateOf(false) }
+
+    if (selectedCategoryForHistory != null) {
+        CategoryHistoryScreen(
+            category = selectedCategoryForHistory!!,
+            viewModel = viewModel,
+            onBack = { selectedCategoryForHistory = null }
+        )
+        return
+    }
 
     val currencyFormatter = remember {
         try {
@@ -92,10 +107,34 @@ fun DashboardScreen(
         budget.monthlySalary - totalSpentThisMonth
     }
 
+    if (showSignOutAlert) {
+        AlertDialog(
+            onDismissRequest = { showSignOutAlert = false },
+            title = { Text("Sign Out Session?") },
+            text = { Text("Do you want to lock this vault? You can log back in anytime using your secret PIN.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSignOutAlert = false
+                        viewModel.logout()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Sign Out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutAlert = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(SleekBg)
+            .background(Color.Transparent)
             .testTag("dashboard_screen"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -125,21 +164,33 @@ fun DashboardScreen(
                             fontWeight = FontWeight.ExtraBold,
                             letterSpacing = (-0.5).sp
                         ),
-                        color = Color.White
+                        color = SleekTextPrimary
                     )
                 }
 
-                // Avatar JD/SC with subtle border and inner light background glow
+                // Avatar programmatically showing initials with signout on click
+                val userInitials = remember(loggedInUser) {
+                    val name = loggedInUser?.name?.trim() ?: "Guest"
+                    val parts = name.split(" ")
+                    if (parts.size >= 2) {
+                        "${parts[0].take(1)}${parts[1].take(1)}".uppercase()
+                    } else {
+                        name.take(2).uppercase()
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
                         .background(IndigoDarkAccent.copy(alpha = 0.15f))
-                        .border(1.dp, IndigoDarkAccent.copy(alpha = 0.4f), CircleShape),
+                        .border(1.dp, IndigoDarkAccent.copy(alpha = 0.4f), CircleShape)
+                        .clickable { onProfileClick() }
+                        .testTag("user_avatar"),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "SC",
+                        text = userInitials,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFC7D2FE)
@@ -157,10 +208,18 @@ fun DashboardScreen(
                     .clip(RoundedCornerShape(32.dp))
                     .background(
                         Brush.linearGradient(
-                            colors = listOf(Color(0xFF1E1E1E), Color(0xFF121212))
+                            colors = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
+                                listOf(Color(0xFF1E1E1E), Color(0xFF121212))
+                            } else {
+                                listOf(Color(0xFFEEF2FF), Color(0xFFE0E7FF))
+                            }
                         )
                     )
-                    .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(32.dp))
+                    .border(
+                        1.dp,
+                        if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0x14FFFFFF) else Color(0x1F4F46E5),
+                        RoundedCornerShape(32.dp)
+                    )
                     .testTag("balance_card")
             ) {
                 // Background radial glow effect in corner
@@ -195,7 +254,7 @@ fun DashboardScreen(
                             fontSize = 36.sp,
                             letterSpacing = (-1).sp
                         ),
-                        color = Color.White
+                        color = SleekTextPrimary
                     )
 
                     Spacer(modifier = Modifier.height(18.dp))
@@ -246,8 +305,12 @@ fun DashboardScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50.dp))
-                                .background(Color(0x0CFFFFFF))
-                                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(50.dp))
+                                .background(if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0x0CFFFFFF) else Color(0x0D000000))
+                                .border(
+                                    1.dp,
+                                    if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0x1AFFFFFF) else Color(0x1A000000),
+                                    RoundedCornerShape(50.dp)
+                                )
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text(
@@ -319,7 +382,8 @@ fun DashboardScreen(
                 CategoryBudgetCard(
                     category = category,
                     spent = categorySpent,
-                    currencyFormatter = currencyFormatter
+                    currencyFormatter = currencyFormatter,
+                    onClick = { selectedCategoryForHistory = category }
                 )
             }
         }
@@ -376,7 +440,8 @@ fun DashboardScreen(
 fun CategoryBudgetCard(
     category: Category,
     spent: Double,
-    currencyFormatter: NumberFormat
+    currencyFormatter: NumberFormat,
+    onClick: () -> Unit
 ) {
     val consumptionPercent = if (category.monthlyLimit > 0) (spent / category.monthlyLimit).toFloat() else 0f
     
@@ -398,7 +463,12 @@ fun CategoryBudgetCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0x0CFFFFFF), RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .border(
+                1.dp,
+                if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0x0CFFFFFF) else Color(0x0D000000),
+                RoundedCornerShape(16.dp)
+            )
             .testTag("category_card_${category.id}"),
         colors = CardDefaults.cardColors(containerColor = SleekSurface),
         shape = RoundedCornerShape(16.dp),
@@ -435,7 +505,7 @@ fun CategoryBudgetCard(
                         Text(
                             text = category.name,
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White,
+                            color = SleekTextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -451,7 +521,7 @@ fun CategoryBudgetCard(
                     Text(
                         text = currencyFormatter.format(spent),
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                        color = if (spent > category.monthlyLimit) Color(0xFFEF4444) else Color.White
+                        color = if (spent > category.monthlyLimit) Color(0xFFEF4444) else SleekTextPrimary
                     )
                     Text(
                         text = "Limit: ${currencyFormatter.format(category.monthlyLimit)}",
@@ -521,7 +591,11 @@ fun RecentExpenseCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { showConfirmDelete = true }
-            .border(1.dp, Color(0x0CFFFFFF), RoundedCornerShape(12.dp))
+            .border(
+                1.dp,
+                if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0x0CFFFFFF) else Color(0x0D000000),
+                RoundedCornerShape(12.dp)
+            )
             .testTag("expense_card_${expense.id}"),
         colors = CardDefaults.cardColors(containerColor = SleekSurfaceVariant),
         shape = RoundedCornerShape(12.dp),
@@ -549,18 +623,20 @@ fun RecentExpenseCard(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = if (expense.description.isBlank()) expense.categoryName else expense.description,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
+                        color = SleekTextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "${expense.categoryName} • $dateString • ${expense.paymentMode}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = SleekTextSecondary
+                        color = SleekTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
