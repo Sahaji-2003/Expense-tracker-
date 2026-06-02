@@ -43,7 +43,11 @@ import com.example.data.model.Category
 import com.example.data.model.ExpenseWithCategory
 import com.example.ui.components.IconMapping
 import com.example.ui.theme.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.viewmodel.ExpenseViewModel
+import java.io.OutputStream
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -189,6 +193,49 @@ fun AnalyticsScreen(
         }
     }
 
+    val context = LocalContext.current
+
+    // State for CSV download trigger
+    var csvDataToSave by remember { mutableStateOf<String?>(null) }
+    val saveCsvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null && csvDataToSave != null) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(csvDataToSave!!.toByteArray())
+                }
+                android.widget.Toast.makeText(context, "CSV Report Saved Successfully!", android.widget.Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, "Error saving CSV: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+            }
+            csvDataToSave = null
+        }
+    }
+
+    // State for PDF download trigger
+    var triggerPdfSave by remember { mutableStateOf(false) }
+    val savePdfLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null && triggerPdfSave) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    generatePdfReport(context, categories, filteredExpenses, outputStream)
+                }
+                android.widget.Toast.makeText(context, "PDF Report Saved Successfully!", android.widget.Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, "Error saving PDF: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+            }
+            triggerPdfSave = false
+        }
+    }
+
+    val currentMonthName = remember(timeFrame) { 
+        val clean = if (timeFrame == "Current Month" || timeFrame == "This Month") "Current_Month" else timeFrame.replace(" ", "_")
+        "Budget_Report_$clean"
+    }
+
     // Compute previous last 3 months boundaries (Month -1, -2, -3) 
     val monthCompareStats = remember(allExpenses, categories) {
         val statsList = mutableListOf<CategoryComparisonStat>()
@@ -283,6 +330,89 @@ fun AnalyticsScreen(
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                             color = if (isSelected) Color.White else SleekTextSecondary
                         )
+                    }
+                }
+            }
+        }
+
+        // Export / Download Section Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, SleekDivider, RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = SleekSurface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "CONSOLIDATED STATEMENTS",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp
+                        ),
+                        color = SleekMutedText,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Text(
+                        text = "Download a comprehensive statement featuring category-wise allocation, spending totals, limits, and the transaction ledger for $timeFrame.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SleekTextSecondary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(modifier = Modifier.height(18.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val csv = generateCsvReport(categories, filteredExpenses)
+                                csvDataToSave = csv
+                                saveCsvLauncher.launch("${currentMonthName}.csv")
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = IndigoDarkAccent,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = "Export CSV",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                        
+                        Button(
+                            onClick = {
+                                triggerPdfSave = true
+                                savePdfLauncher.launch("${currentMonthName}.pdf")
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PrimaryDark,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = "Export PDF",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                     }
                 }
             }
@@ -990,4 +1120,253 @@ fun InteractiveDonutChart(
             }
         }
     }
+}
+
+fun generateCsvReport(categories: List<Category>, expenses: List<ExpenseWithCategory>): String {
+    val sb = java.lang.StringBuilder()
+    sb.append("MONTHLY EXPENSE REPORT\n")
+    val currentMonthStr = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date())
+    sb.append("Report Date:, $currentMonthStr\n\n")
+    
+    // Summary Section
+    sb.append("CATEGORY SUMMARY\n")
+    sb.append("Category,Monthly Limit (INR),Total Spent (INR),Remaining (INR),Status\n")
+    var totalLimits = 0.0
+    var totalSpentAll = 0.0
+    categories.forEach { category ->
+        val spent = expenses.filter { it.categoryId == category.id }.sumOf { it.amount }
+        val remaining = category.monthlyLimit - spent
+        val status = if (spent > category.monthlyLimit) "Overdraft" else "Within Budget"
+        sb.append("\"${category.name.replace("\"", "\"\"")}\",${category.monthlyLimit},$spent,$remaining,\"$status\"\n")
+        totalLimits += category.monthlyLimit
+        totalSpentAll += spent
+    }
+    sb.append("\"TOTAL\",$totalLimits,$totalSpentAll,${totalLimits - totalSpentAll},\"${if (totalSpentAll > totalLimits) "Overdraft" else "Within Budget"}\"\n\n")
+    
+    // Details Section
+    sb.append("DETAILED EXPENSE LOGS\n")
+    sb.append("Date,Category,Description,Amount (INR),Payment Mode\n")
+    val sortedExpenses = expenses.sortedByDescending { it.timestamp }
+    sortedExpenses.forEach { expense ->
+        val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(expense.timestamp))
+        val desc = expense.description.replace("\"", "\"\"")
+        sb.append("\"$dateStr\",\"${expense.categoryName.replace("\"", "\"\"")}\",\"$desc\",${expense.amount},\"${expense.paymentMode.replace("\"", "\"\"")}\"\n")
+    }
+    
+    return sb.toString()
+}
+
+fun generatePdfReport(
+    context: android.content.Context,
+    categories: List<Category>,
+    expenses: List<ExpenseWithCategory>,
+    outputStream: java.io.OutputStream
+) {
+    val pdfDocument = android.graphics.pdf.PdfDocument()
+    val pageWidth = 595 // A4 Width
+    val pageHeight = 842 // A4 Height
+
+    var pageNumber = 1
+    var pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+    var page = pdfDocument.startPage(pageInfo)
+    var canvas = page.canvas
+
+    val subtitlePaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#64748B") // Sleek Muted
+        textSize = 10f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+    }
+
+    val titlePaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#0B0B14") // Dark deep
+        textSize = 18f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+    }
+
+    val sectionPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#4F46E5") // Indigo Accent
+        textSize = 12f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+    }
+
+    val headerPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#1E1B4B") // Dark Indigo header
+        textSize = 9f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+    }
+
+    val cellPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#334155")
+        textSize = 9f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+    }
+
+    val redCellPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#EF4444")
+        textSize = 9f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+    }
+
+    val greenCellPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#10B981")
+        textSize = 9f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+    }
+
+    val linePaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#E2E8F0")
+        strokeWidth = 0.5f
+    }
+
+    val headerBackgroundPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#EEF2F6")
+    }
+
+    var y = 40f
+
+    // Header drawing helper
+    fun drawPageHeader(canvas: android.graphics.Canvas, monthStr: String, pNum: Int) {
+        canvas.drawRect(0f, 0f, pageWidth.toFloat(), 15f, android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#4F46E5") })
+        canvas.drawText("Sleek Budget Planner - Monthly Expense Report", 20f, 32f, subtitlePaint)
+        canvas.drawText("Month: $monthStr", pageWidth - 150f, 32f, subtitlePaint)
+        canvas.drawLine(20f, 38f, pageWidth - 20f, 38f, linePaint)
+    }
+
+    val currentMonthStr = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date())
+
+    // Initial page header
+    drawPageHeader(canvas, currentMonthStr, pageNumber)
+    y = 60f
+
+    // Document Title
+    canvas.drawText("Sleek Budget Statement", 20f, y, titlePaint)
+    y += 15f
+    canvas.drawText("Generated on ${SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date())}", 20f, y, subtitlePaint)
+    y += 30f
+
+    // 1. Category Summary Section
+    canvas.drawText("1. CATEGORY SPENDING OVERVIEW", 20f, y, sectionPaint)
+    y += 10f
+    canvas.drawLine(20f, y, pageWidth - 20f, y, linePaint)
+    y += 15f
+
+    // Summary Table Header
+    canvas.drawRect(20f, y - 10f, pageWidth - 20f, y + 6f, headerBackgroundPaint)
+    canvas.drawText("Category", 30f, y, headerPaint)
+    canvas.drawText("Monthly Limit", 180f, y, headerPaint)
+    canvas.drawText("Amount Spent", 290f, y, headerPaint)
+    canvas.drawText("Remaining", 400f, y, headerPaint)
+    canvas.drawText("Status", 500f, y, headerPaint)
+    y += 6f
+    canvas.drawLine(20f, y, pageWidth - 20f, y, linePaint)
+    y += 12f
+
+    // Summary Rows
+    var totalLimit = 0.0
+    var totalSpent = 0.0
+
+    categories.forEach { category ->
+        val spent = expenses.filter { it.categoryId == category.id }.sumOf { it.amount }
+        val remaining = category.monthlyLimit - spent
+
+        canvas.drawText(category.name, 30f, y, cellPaint)
+        canvas.drawText(String.format("Rs. %,.2f", category.monthlyLimit), 180f, y, cellPaint)
+        canvas.drawText(String.format("Rs. %,.2f", spent), 290f, y, cellPaint)
+        
+        val remStr = String.format("Rs. %,.2f", Math.abs(remaining))
+        if (remaining < 0) {
+            canvas.drawText("-$remStr", 400f, y, redCellPaint)
+            canvas.drawText("OVER LIMIT", 500f, y, redCellPaint)
+        } else {
+            canvas.drawText("+$remStr", 400f, y, greenCellPaint)
+            canvas.drawText("OK", 500f, y, greenCellPaint)
+        }
+
+        totalLimit += category.monthlyLimit
+        totalSpent += spent
+
+        y += 4f
+        canvas.drawLine(20f, y, pageWidth - 20f, y, linePaint)
+        y += 14f
+    }
+
+    // Grand Total Summary Row
+    canvas.drawRect(20f, y - 11f, pageWidth - 20f, y + 4f, headerBackgroundPaint)
+    canvas.drawText("GRAND TOTAL", 30f, y, headerPaint)
+    canvas.drawText(String.format("Rs. %,.2f", totalLimit), 180f, y, headerPaint)
+    canvas.drawText(String.format("Rs. %,.2f", totalSpent), 290f, y, headerPaint)
+    
+    val totalRemaining = totalLimit - totalSpent
+    val totRemStr = String.format("Rs. %,.2f", Math.abs(totalRemaining))
+    if (totalRemaining < 0) {
+        canvas.drawText("-$totRemStr", 400f, y, redCellPaint)
+        canvas.drawText("OVER BUDGET", 500f, y, redCellPaint)
+    } else {
+        canvas.drawText("+$totRemStr", 400f, y, greenCellPaint)
+        canvas.drawText("UNDER BUDGET", 500f, y, greenCellPaint)
+    }
+    y += 25f
+
+    // 2. Detailed Logs Section
+    canvas.drawText("2. TRANSACTION LEDGER LOGS", 20f, y, sectionPaint)
+    y += 10f
+    canvas.drawLine(20f, y, pageWidth - 20f, y, linePaint)
+    y += 15f
+
+    // Detail Table Header
+    canvas.drawRect(20f, y - 10f, pageWidth - 20f, y + 6f, headerBackgroundPaint)
+    canvas.drawText("Date & Time", 30f, y, headerPaint)
+    canvas.drawText("Category", 150f, y, headerPaint)
+    canvas.drawText("Description", 260f, y, headerPaint)
+    canvas.drawText("Pay Mode", 425f, y, headerPaint)
+    canvas.drawText("Amount", 510f, y, headerPaint)
+    y += 6f
+    canvas.drawLine(20f, y, pageWidth - 20f, y, linePaint)
+    y += 12f
+
+    val df = SimpleDateFormat("dd MMM hh:mm a", Locale.getDefault())
+
+    expenses.forEach { exp ->
+        // Check if page height budget is exceeded, write and start a new page
+        if (y > pageHeight - 50f) {
+            pdfDocument.finishPage(page)
+            pageNumber++
+            pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+            page = pdfDocument.startPage(pageInfo)
+            canvas = page.canvas
+            
+            drawPageHeader(canvas, currentMonthStr, pageNumber)
+            y = 70f
+            
+            // Re-draw Table Header on new page
+            canvas.drawRect(20f, y - 10f, pageWidth - 20f, y + 6f, headerBackgroundPaint)
+            canvas.drawText("Date & Time", 30f, y, headerPaint)
+            canvas.drawText("Category", 150f, y, headerPaint)
+            canvas.drawText("Description", 260f, y, headerPaint)
+            canvas.drawText("Pay Mode", 425f, y, headerPaint)
+            canvas.drawText("Amount", 510f, y, headerPaint)
+            y += 6f
+            canvas.drawLine(20f, y, pageWidth - 20f, y, linePaint)
+            y += 12f
+        }
+
+        val formattedDate = df.format(Date(exp.timestamp))
+        val rawDesc = if (exp.description.isNotBlank()) exp.description else "-"
+        // Ensure description doesn't overflow cell bounds
+        val truncatedDesc = if (rawDesc.length > 28) rawDesc.take(25) + "..." else rawDesc
+
+        canvas.drawText(formattedDate, 30f, y, cellPaint)
+        canvas.drawText(exp.categoryName, 150f, y, cellPaint)
+        canvas.drawText(truncatedDesc, 260f, y, cellPaint)
+        canvas.drawText(exp.paymentMode, 425f, y, cellPaint)
+        canvas.drawText(String.format("Rs. %,.2f", exp.amount), 510f, y, cellPaint)
+
+        y += 4f
+        canvas.drawLine(20f, y, pageWidth - 20f, y, linePaint)
+        y += 14f
+    }
+
+    pdfDocument.finishPage(page)
+    pdfDocument.writeTo(outputStream)
+    pdfDocument.close()
 }
